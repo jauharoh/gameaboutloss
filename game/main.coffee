@@ -1,218 +1,187 @@
-class Game
-  constructor: (@options)->
-    @canvas = document.createElement('canvas')
-    @canvas.width = @options.width
-    @canvas.height = @options.height
-    @canvas.addEventListener('touchstart', @tap)
-    @ctx = @canvas.getContext('2d')
-    document.body.appendChild(@canvas)
-    @entities = []
-    setInterval =>
-      @update()
-    , 1000/60
-
-  tap: =>
-    this.ding.play()
-    this.music.play()
-
-  addEntity: (entity)->
-    @entities.push entity
-
-  update: =>
-#    entity.update() for entity in @entities
-#    @draw()
-
-  draw: =>
-
-    console.log('draw')
-    entity.draw(@ctx) for entity in @entities
-
-
-class Actor
-  constructor: (@shape, @voice)->
-    @shape.addEventListener 'mousedown', @shrink
-    @shape.addEventListener 'mouseup mouseout', @release
-
-  shrink: =>
-    @shape.scale = 2
-  release: =>
-    @voice.play()
-    @shape.transitionTo
-      duration: 0.06
-      easing: 'ease-out'
-      scale:
-        x: 1.2
-        y: 1.2
-      callback: =>
-        @shape.transitionTo
-          duration: 0.5
-          easing: 'elastic-ease-out'
-          scale:
-            x: 1
-            y: 1
-
-
 class Sound
   constructor: (src) ->
     audio = new Audio()
     audio.src = src
     audio.load()
-    audio.play()
     @audio = audio
   play: ->
-    @audio.currentTime = 0.5
     @audio.play()
   stop: ->
     @audio.pause()
     @audio.currentTime = 0
   pause: ->
     @audio.pause()
-
-class Rectangle
-  constructor: (@options)->
-    @canvas = document.createElement('canvas')
-    @canvas.id = @options.id
-    @canvas.zIndex = @options.zIndex
-    @canvas.width = @options.width
-    @canvas.height = @options.height
-    document.body.appendChild(@canvas)
-    @ctx = @canvas.getContext('2d')
-    @draw()
-
-  draw: ->
-    @ctx.beginPath()
-    @ctx.rect(@options.x, @options.y, @options.width, @options.height)
-    @ctx.fillStyle = @options.fill
-    @ctx.closePath()
-    @ctx.fill()
-
-  update: ->
-    return
-
-class Circle
-  constructor: (@options) ->
-    @attrs = {}
-  update: =>
-    for option of @options when option isnt "styles"
-      if @options[option] isnt @attrs[option]
-        console.log(@options[option] , @attrs[option])
-        console.log 'updated'
-        break
-    for option of @options when option isnt 'styles'
-      @attrs[option] = @options[option]
-
-  draw: (ctx)->
-    ctx.beginPath()
-    #arc(x,y,radius,beginRadian, endRadian, anticlockwise)
-    ctx.arc(50, 50, @options.radius, 0, Math.PI*2)
-    ctx.fillStyle = @options.fill
-    ctx.closePath()
-    ctx.fill()
-
-class Player
+class Background
   constructor: (@director) ->
     @actor = new CAAT.ShapeActor().
-      setLocation(20,20).
-      setSize(60,60).
-      setFillStyle('#FFFFFF').
-      setStrokeStyle('#000000')
+      setLocation(0,0).
+      setSize(window.innerWidth, window.innerHeight).
+      setShape(CAAT.ShapeActor.prototype.SHAPE_RECTANGLE).
+      setFillStyle('#D3EFF5')
+class Player
+  deviceScale: window.innerHeight/768
+  constructor: (@director) ->
+    @maxScale = 1.2*@deviceScale
+    @minScale = 0.35*@deviceScale
+    @baseScale = 1*@deviceScale
+    @actor = new CAAT.Actor().
+      setBackgroundImage(@director.getImage('player'))
+    #Add aura actor
+#    @director.scenes[0].addChild @actor
+    #Set up inputs
     @actor.mouseDown = =>
       @shrink()
     @actor.mouseUp = =>
       window.ding.play()
       @release()
+    @actor.touchStart = (e) =>
+      touch = e.changedTouches[0]
+      @shrink()
+    @actor.touchEnd = (e) =>
+      @release()
+    #Set up interpolators
+    @moveEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
     @shrinkEase = new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
     @releaseEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
-    @revertEase = new CAAT.Interpolator().createExponentialInOutInterpolator(6, false)
+    @revertEase = new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5)
     @shrinkBehavior = new CAAT.ScaleBehavior().
       setCycle(false).
-      setValues(1, 0.85, 1, 0.85, 0.5, 0.5).
-      setInterpolator(@shrinkEase)
+      setValues(@baseScale, @minScale, @baseScale, @minScale, 0.5, 0.5).
+      setInterpolator(@shrinkEase).
+      setId(1)
     @releaseBehavior = new CAAT.ScaleBehavior().
       setCycle(false).
-      setValues( 0.85, 1.4, 0.85, 1.4, 0.5, 0.5).
+      setValues( 0.85, @maxScale, 0.85, @maxScale, 0.5, 0.5).
       setInterpolator(@shrinkEase).
+      setId(2).
       addListener
         behaviorExpired: =>
           @revert()
     @revertBehavior = new CAAT.ScaleBehavior().
-      setValues( 1.4, 1, 1.4, 1, 0.5, 0.5).
-      setInterpolator(@revertEase)
+      setValues( @maxScale, @baseScale, @maxScale, @baseScale, 0.5, 0.5).
+      setInterpolator(@revertEase).
+      setId(3)
+  move: (e) =>
+    x = @actor.x
+    y = @actor.y
+    @actor.x = x + ((e.pageX-@actor.width/2) - x)/30
+    @actor.y = y  + ((e.pageY-@actor.height/2) - y)/30
+  moveTo: (x, y) =>
+    @moving = true
+    tx = x-@actor.width/2
+    ty = y-@actor.height/2
+    @path = new CAAT.LinearPath().setInitialPosition(@actor.x, @actor.y).setFinalPosition(tx,ty)
+    console.log length = Math.sqrt(Math.pow(Math.abs(@actor.x - tx), 2) + Math.pow(Math.abs(@actor.y - ty), 2))
+    b = new CAAT.PathBehavior().setPath(@path).setInterpolator(@moveEase)
+    b.setFrameTime(@director.time, length*2)
+    @actor.addBehavior(b)
 
+  updatePath: (x,y) =>
+
+    tx = x-@actor.width/2
+    ty = y-@actor.height/2
+    @path.setFinalPosition(tx, ty)
   revert: ->
-    @revertBehavior.setFrameTime(@director.time, 100)
+    @revertBehavior.setFrameTime(@director.time, 800)
     @actor.addBehavior(@revertBehavior)
 
   shrink: ->
-    @shrinkBehavior.setFrameTime(@director.time, 100)
+    @shrinkBehavior.setFrameTime(@director.time, 3000)
+    console.log @baseScale
 #    @actor.removeBehavior(@revertBehavior)
+#    @actor.removeBehavior(@revertBehavior).removeBehavior(@releaseBehavior)
+    @actor.removeBehaviorById(2).removeBehaviorById(3)
     @actor.addBehavior(@shrinkBehavior)
 
   release: ->
-    @releaseBehavior.setFrameTime(@director.time, 120)
+    window.ding.play()
+    #Behaviors for aura lifecycle
+    bScale = new CAAT.ScaleBehavior().
+      setCycle(false).
+      setValues( 0.2*@deviceScale, 1.2*@deviceScale, 0.2*@deviceScale, 1.2*@deviceScale, 0.5, 0.5).
+      setInterpolator(@releaseEase).
+      setFrameTime(@director.time, 800)
+    #      addListener
+    #        behaviorExpired: =>
+    #          @revert()
+    aScale = new CAAT.AlphaBehavior().
+      setCycle(false).
+      setValues(1,0).
+      setInterpolator(@releaseEase).
+      setFrameTime(@director.time, 800)
+
+    aura = new CAAT.Actor().setBackgroundImage(@director.getImage('aura')).centerAt(@actor.x+@actor.width/2, @actor.y+@actor.height/2).
+      setFrameTime(@director.time, 800).addBehavior(bScale).addBehavior(aScale)
+
+    @director.scenes[0].activeChildren.addChild aura
+    @actor.removeBehaviorById(1)
+    @releaseBehavior.setFrameTime(@director.time, 120).
+      setValues( @actor.scaleX, @maxScale, @actor.scaleY, @maxScale, 0.5, 0.5)
     @actor.addBehavior(@releaseBehavior)
 
+window.addEventListener('load', -> preload())
 
-#  window.addEventListener 'load', -> alert('hi'), false
+CAAT.TOUCH_BEHAVIOR= CAAT.TOUCH_AS_MULTITOUCH;
 
-window.addEventListener('load', -> start())
-
-start = ->
-#  window.game = game = new Game
-#    width: 1024
-#    height: 768
-#  game.background = new Rectangle
-#    x: 0
-#    y: 0
-#    width: screen.width
-#    height: screen.height
-#    id: 'background'
-#    fill: 'red'
-#    styles:
-#      zIndex: 0
-#      position: 'absolute'
-#      top: 0
-#      left: 0
-
-  player= new Circle
-    radius: 50
-    id: 'player'
-    x:300
-    y:200
-    fill: "green"
-    sX: 1
-    sY: 1
-    styles:
-      zIndex: 1
-      position: 'absolute'
-      top: 0
-      left: 0
-      background: 'none'
-  #  point1 =
-  #  companionShape = new Kinetic.Polygon
-  #    points:
-#  game.addEntity(game.player)
-#  game.addEntity(game.background)
-  window.music = new Sound('track_1.mp3')
-  window.ding = new Sound('ding.mp3')
-#  player = new Actor(playerShape, game.ding)
-  #  companion = new Actor(companionShape)
+preload = ->
+  window.images = new CAAT.ImagePreloader().loadImages [
+    {id: 'player', url: 'game/assets/images/player.png'}
+    {id: 'aura', url: 'game/assets/images/aura.png'}]
+  , ( counter, images ) =>
+      if counter is images.length
+        start(images)
+start = (images) ->
+  window.music = new Sound('game/assets/soundtracks/unity_1.mp3')
+  window.ding = new Sound('game/assets/sounds/ding.mp3')
+  window.music.audio.addEventListener('ended', window.music.play())
   window.music.play()
+  #Canvas
   canvas = document.createElement('canvas')
   document.body.appendChild(canvas)
-  canvas.width = 1024
-  canvas.height = 768
-  window.director = director = new CAAT.Director().initialize 1024, 768, canvas
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+  #Director
+  director = window.director = new CAAT.Director().initialize window.innerWidth, window.innerHeight, canvas
+  director.setImagesCache(images)
+
+  director.onRenderStart = ->
+  #Scene
+    if(director.mousePos)
+      player.move(director.mousePos)
   scene = director.createScene()
-  #player
-
-  window.player = new Player(director);
-  scene.addChild window.player.actor
-  CAAT.loop 1
-
-#  game.player = player
-#  game.canvas.append(playerShape)
-#  $('body').bind 'touchstart', ->
-#    player.shrink()
-#  $('body').bind 'touchend', ->
+  #Container
+  container = new CAAT.ActorContainer().
+    setBounds(0, 0, window.innerWidth, window.innerHeight).
+    setGestureEnabled(false)
+  container.mouseDown = (e)->
+    director.mousePos = e.sourceEvent
+#    movePlayerTo(e.sourceEvent.pageX, e.sourceEvent.pageY)
+  container.mouseDrag = (e) ->
+    director.mousePos = e.sourceEvent
+  container.mouseUp = ->
+    director.mousePos = null
 #    player.release()
+  container.touchStart = (e)->
+    touch = e.changedTouches[0]
+    movePlayerTo(touch.pageX, touch.pageY)
+  container.touchEnd = ->
+    player.release()
+#  container.touchMove = (e)->
+#    touch = e.changedTouches[0]
+#    updatePlayerPath(e.sourceEvent.pageX, e.sourceEvent.pageY)
+
+  movePlayerTo = (x,y)->
+    player.moveTo(x,y)
+  updatePlayerPath = (x,y)->
+    player.updatePath(x,y)
+  #Player
+  player = window.player = new Player(director);
+  background = new Background(director)
+  #Add children
+  scene.addChild background.actor
+  scene.addChild container
+  scene.addChild player.actor
+
+  player.actor.setLocation(300, 300)
+
+  CAAT.loop 1

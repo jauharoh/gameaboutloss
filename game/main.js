@@ -1,90 +1,15 @@
 (function() {
-  var Actor, Circle, Game, Player, Rectangle, Sound, start;
+  var Background, Player, Sound, preload, start;
   var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
-  Game = (function() {
-    function Game(options) {
-      this.options = options;
-      this.draw = __bind(this.draw, this);
-      this.update = __bind(this.update, this);
-      this.tap = __bind(this.tap, this);
-      this.canvas = document.createElement('canvas');
-      this.canvas.width = this.options.width;
-      this.canvas.height = this.options.height;
-      this.canvas.addEventListener('touchstart', this.tap);
-      this.ctx = this.canvas.getContext('2d');
-      document.body.appendChild(this.canvas);
-      this.entities = [];
-      setInterval(__bind(function() {
-        return this.update();
-      }, this), 1000 / 60);
-    }
-    Game.prototype.tap = function() {
-      this.ding.play();
-      return this.music.play();
-    };
-    Game.prototype.addEntity = function(entity) {
-      return this.entities.push(entity);
-    };
-    Game.prototype.update = function() {};
-    Game.prototype.draw = function() {
-      var entity, _i, _len, _ref, _results;
-      console.log('draw');
-      _ref = this.entities;
-      _results = [];
-      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-        entity = _ref[_i];
-        _results.push(entity.draw(this.ctx));
-      }
-      return _results;
-    };
-    return Game;
-  })();
-  Actor = (function() {
-    function Actor(shape, voice) {
-      this.shape = shape;
-      this.voice = voice;
-      this.release = __bind(this.release, this);
-      this.shrink = __bind(this.shrink, this);
-      this.shape.addEventListener('mousedown', this.shrink);
-      this.shape.addEventListener('mouseup mouseout', this.release);
-    }
-    Actor.prototype.shrink = function() {
-      return this.shape.scale = 2;
-    };
-    Actor.prototype.release = function() {
-      this.voice.play();
-      return this.shape.transitionTo({
-        duration: 0.06,
-        easing: 'ease-out',
-        scale: {
-          x: 1.2,
-          y: 1.2
-        },
-        callback: __bind(function() {
-          return this.shape.transitionTo({
-            duration: 0.5,
-            easing: 'elastic-ease-out',
-            scale: {
-              x: 1,
-              y: 1
-            }
-          });
-        }, this)
-      });
-    };
-    return Actor;
-  })();
   Sound = (function() {
     function Sound(src) {
       var audio;
       audio = new Audio();
       audio.src = src;
       audio.load();
-      audio.play();
       this.audio = audio;
     }
     Sound.prototype.play = function() {
-      this.audio.currentTime = 0.5;
       return this.audio.play();
     };
     Sound.prototype.stop = function() {
@@ -96,66 +21,24 @@
     };
     return Sound;
   })();
-  Rectangle = (function() {
-    function Rectangle(options) {
-      this.options = options;
-      this.canvas = document.createElement('canvas');
-      this.canvas.id = this.options.id;
-      this.canvas.zIndex = this.options.zIndex;
-      this.canvas.width = this.options.width;
-      this.canvas.height = this.options.height;
-      document.body.appendChild(this.canvas);
-      this.ctx = this.canvas.getContext('2d');
-      this.draw();
+  Background = (function() {
+    function Background(director) {
+      this.director = director;
+      this.actor = new CAAT.ShapeActor().setLocation(0, 0).setSize(window.innerWidth, window.innerHeight).setShape(CAAT.ShapeActor.prototype.SHAPE_RECTANGLE).setFillStyle('#D3EFF5');
     }
-    Rectangle.prototype.draw = function() {
-      this.ctx.beginPath();
-      this.ctx.rect(this.options.x, this.options.y, this.options.width, this.options.height);
-      this.ctx.fillStyle = this.options.fill;
-      this.ctx.closePath();
-      return this.ctx.fill();
-    };
-    Rectangle.prototype.update = function() {};
-    return Rectangle;
-  })();
-  Circle = (function() {
-    function Circle(options) {
-      this.options = options;
-      this.update = __bind(this.update, this);
-      this.attrs = {};
-    }
-    Circle.prototype.update = function() {
-      var option, _results;
-      for (option in this.options) {
-        if (option !== "styles") {
-          if (this.options[option] !== this.attrs[option]) {
-            console.log(this.options[option], this.attrs[option]);
-            console.log('updated');
-            break;
-          }
-        }
-      }
-      _results = [];
-      for (option in this.options) {
-        if (option !== 'styles') {
-          _results.push(this.attrs[option] = this.options[option]);
-        }
-      }
-      return _results;
-    };
-    Circle.prototype.draw = function(ctx) {
-      ctx.beginPath();
-      ctx.arc(50, 50, this.options.radius, 0, Math.PI * 2);
-      ctx.fillStyle = this.options.fill;
-      ctx.closePath();
-      return ctx.fill();
-    };
-    return Circle;
+    return Background;
   })();
   Player = (function() {
+    Player.prototype.deviceScale = window.innerHeight / 768;
     function Player(director) {
       this.director = director;
-      this.actor = new CAAT.ShapeActor().setLocation(20, 20).setSize(60, 60).setFillStyle('#FFFFFF').setStrokeStyle('#000000');
+      this.updatePath = __bind(this.updatePath, this);
+      this.moveTo = __bind(this.moveTo, this);
+      this.move = __bind(this.move, this);
+      this.maxScale = 1.2 * this.deviceScale;
+      this.minScale = 0.35 * this.deviceScale;
+      this.baseScale = 1 * this.deviceScale;
+      this.actor = new CAAT.Actor().setBackgroundImage(this.director.getImage('player'));
       this.actor.mouseDown = __bind(function() {
         return this.shrink();
       }, this);
@@ -163,63 +46,140 @@
         window.ding.play();
         return this.release();
       }, this);
+      this.actor.touchStart = __bind(function(e) {
+        var touch;
+        touch = e.changedTouches[0];
+        return this.shrink();
+      }, this);
+      this.actor.touchEnd = __bind(function(e) {
+        return this.release();
+      }, this);
+      this.moveEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false);
       this.shrinkEase = new CAAT.Interpolator().createExponentialOutInterpolator(4, false);
       this.releaseEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false);
-      this.revertEase = new CAAT.Interpolator().createExponentialInOutInterpolator(6, false);
-      this.shrinkBehavior = new CAAT.ScaleBehavior().setCycle(false).setValues(1, 0.85, 1, 0.85, 0.5, 0.5).setInterpolator(this.shrinkEase);
-      this.releaseBehavior = new CAAT.ScaleBehavior().setCycle(false).setValues(0.85, 1.4, 0.85, 1.4, 0.5, 0.5).setInterpolator(this.shrinkEase).addListener({
+      this.revertEase = new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5);
+      this.shrinkBehavior = new CAAT.ScaleBehavior().setCycle(false).setValues(this.baseScale, this.minScale, this.baseScale, this.minScale, 0.5, 0.5).setInterpolator(this.shrinkEase).setId(1);
+      this.releaseBehavior = new CAAT.ScaleBehavior().setCycle(false).setValues(0.85, this.maxScale, 0.85, this.maxScale, 0.5, 0.5).setInterpolator(this.shrinkEase).setId(2).addListener({
         behaviorExpired: __bind(function() {
           return this.revert();
         }, this)
       });
-      this.revertBehavior = new CAAT.ScaleBehavior().setValues(1.4, 1, 1.4, 1, 0.5, 0.5).setInterpolator(this.revertEase);
+      this.revertBehavior = new CAAT.ScaleBehavior().setValues(this.maxScale, this.baseScale, this.maxScale, this.baseScale, 0.5, 0.5).setInterpolator(this.revertEase).setId(3);
     }
+    Player.prototype.move = function(e) {
+      var x, y;
+      x = this.actor.x;
+      y = this.actor.y;
+      this.actor.x = x + ((e.pageX - this.actor.width / 2) - x) / 30;
+      return this.actor.y = y + ((e.pageY - this.actor.height / 2) - y) / 30;
+    };
+    Player.prototype.moveTo = function(x, y) {
+      var b, length, tx, ty;
+      this.moving = true;
+      tx = x - this.actor.width / 2;
+      ty = y - this.actor.height / 2;
+      this.path = new CAAT.LinearPath().setInitialPosition(this.actor.x, this.actor.y).setFinalPosition(tx, ty);
+      console.log(length = Math.sqrt(Math.pow(Math.abs(this.actor.x - tx), 2) + Math.pow(Math.abs(this.actor.y - ty), 2)));
+      b = new CAAT.PathBehavior().setPath(this.path).setInterpolator(this.moveEase);
+      b.setFrameTime(this.director.time, length * 2);
+      return this.actor.addBehavior(b);
+    };
+    Player.prototype.updatePath = function(x, y) {
+      var tx, ty;
+      tx = x - this.actor.width / 2;
+      ty = y - this.actor.height / 2;
+      return this.path.setFinalPosition(tx, ty);
+    };
     Player.prototype.revert = function() {
-      this.revertBehavior.setFrameTime(this.director.time, 100);
+      this.revertBehavior.setFrameTime(this.director.time, 800);
       return this.actor.addBehavior(this.revertBehavior);
     };
     Player.prototype.shrink = function() {
-      this.shrinkBehavior.setFrameTime(this.director.time, 100);
+      this.shrinkBehavior.setFrameTime(this.director.time, 3000);
+      console.log(this.baseScale);
+      this.actor.removeBehaviorById(2).removeBehaviorById(3);
       return this.actor.addBehavior(this.shrinkBehavior);
     };
     Player.prototype.release = function() {
-      this.releaseBehavior.setFrameTime(this.director.time, 120);
+      var aScale, aura, bScale;
+      window.ding.play();
+      bScale = new CAAT.ScaleBehavior().setCycle(false).setValues(0.2 * this.deviceScale, 1.2 * this.deviceScale, 0.2 * this.deviceScale, 1.2 * this.deviceScale, 0.5, 0.5).setInterpolator(this.releaseEase).setFrameTime(this.director.time, 800);
+      aScale = new CAAT.AlphaBehavior().setCycle(false).setValues(1, 0).setInterpolator(this.releaseEase).setFrameTime(this.director.time, 800);
+      aura = new CAAT.Actor().setBackgroundImage(this.director.getImage('aura')).centerAt(this.actor.x + this.actor.width / 2, this.actor.y + this.actor.height / 2).setFrameTime(this.director.time, 800).addBehavior(bScale).addBehavior(aScale);
+      this.director.scenes[0].activeChildren.addChild(aura);
+      this.actor.removeBehaviorById(1);
+      this.releaseBehavior.setFrameTime(this.director.time, 120).setValues(this.actor.scaleX, this.maxScale, this.actor.scaleY, this.maxScale, 0.5, 0.5);
       return this.actor.addBehavior(this.releaseBehavior);
     };
     return Player;
   })();
   window.addEventListener('load', function() {
-    return start();
+    return preload();
   });
-  start = function() {
-    var canvas, director, player, scene;
-    player = new Circle({
-      radius: 50,
-      id: 'player',
-      x: 300,
-      y: 200,
-      fill: "green",
-      sX: 1,
-      sY: 1,
-      styles: {
-        zIndex: 1,
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        background: 'none'
+  CAAT.TOUCH_BEHAVIOR = CAAT.TOUCH_AS_MULTITOUCH;
+  preload = function() {
+    return window.images = new CAAT.ImagePreloader().loadImages([
+      {
+        id: 'player',
+        url: 'game/assets/images/player.png'
+      }, {
+        id: 'aura',
+        url: 'game/assets/images/aura.png'
       }
-    });
-    window.music = new Sound('track_1.mp3');
-    window.ding = new Sound('ding.mp3');
+    ], __bind(function(counter, images) {
+      if (counter === images.length) {
+        return start(images);
+      }
+    }, this));
+  };
+  start = function(images) {
+    var background, canvas, container, director, movePlayerTo, player, scene, updatePlayerPath;
+    window.music = new Sound('game/assets/soundtracks/unity_1.mp3');
+    window.ding = new Sound('game/assets/sounds/ding.mp3');
+    window.music.audio.addEventListener('ended', window.music.play());
     window.music.play();
     canvas = document.createElement('canvas');
     document.body.appendChild(canvas);
-    canvas.width = 1024;
-    canvas.height = 768;
-    window.director = director = new CAAT.Director().initialize(1024, 768, canvas);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    director = window.director = new CAAT.Director().initialize(window.innerWidth, window.innerHeight, canvas);
+    director.setImagesCache(images);
+    director.onRenderStart = function() {
+      if (director.mousePos) {
+        return player.move(director.mousePos);
+      }
+    };
     scene = director.createScene();
-    window.player = new Player(director);
-    scene.addChild(window.player.actor);
+    container = new CAAT.ActorContainer().setBounds(0, 0, window.innerWidth, window.innerHeight).setGestureEnabled(false);
+    container.mouseDown = function(e) {
+      return director.mousePos = e.sourceEvent;
+    };
+    container.mouseDrag = function(e) {
+      return director.mousePos = e.sourceEvent;
+    };
+    container.mouseUp = function() {
+      return director.mousePos = null;
+    };
+    container.touchStart = function(e) {
+      var touch;
+      touch = e.changedTouches[0];
+      return movePlayerTo(touch.pageX, touch.pageY);
+    };
+    container.touchEnd = function() {
+      return player.release();
+    };
+    movePlayerTo = function(x, y) {
+      return player.moveTo(x, y);
+    };
+    updatePlayerPath = function(x, y) {
+      return player.updatePath(x, y);
+    };
+    player = window.player = new Player(director);
+    background = new Background(director);
+    scene.addChild(background.actor);
+    scene.addChild(container);
+    scene.addChild(player.actor);
+    player.actor.setLocation(300, 300);
     return CAAT.loop(1);
   };
 }).call(this);
