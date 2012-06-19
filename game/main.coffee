@@ -18,106 +18,145 @@ class Background
       setSize(window.innerWidth, window.innerHeight).
       setShape(CAAT.ShapeActor.prototype.SHAPE_RECTANGLE).
       setFillStyle('#D3EFF5')
-class Player
+class Character
   deviceScale: window.innerHeight/768
-  constructor: (@director) ->
+
+  events: []
+
+  behaviors:
+    shrink : new CAAT.ScaleBehavior()
+    release: new CAAT.ScaleBehavior()
+    revert : new CAAT.ScaleBehavior()
+    alpha  : new CAAT.AlphaBehavior()
+
+  interps:
+    shrink  : new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
+    move    : new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
+    shrink  : new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
+    release : new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
+    revert  : new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5)
+  constructor: (@name, @director) ->
+    @vel = {x:0, y: 0}
     @maxScale = 1.2*@deviceScale
     @minScale = 0.35*@deviceScale
     @baseScale = 1*@deviceScale
     @actor = new CAAT.Actor().
-      setBackgroundImage(@director.getImage('player'))
-    #Add aura actor
-#    @director.scenes[0].addChild @actor
+    setBackgroundImage(@director.getImage(@name))
+    @actor.setScale(@baseScale, @baseScale)
+    @actor.name = @name
     #Set up inputs
-    @actor.mouseDown = =>
-      @shrink()
-    @actor.mouseUp = =>
-      window.ding.play()
-      @release()
-    @actor.touchStart = (e) =>
-      touch = e.changedTouches[0]
-      @shrink()
-    @actor.touchEnd = (e) =>
-      @release()
-    #Set up interpolators
-    @moveEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
-    @shrinkEase = new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
-    @releaseEase = new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
-    @revertEase = new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5)
-    @shrinkBehavior = new CAAT.ScaleBehavior().
+    @initialize()
+    @initEvents()
+
+  initialize: =>
+    @behaviors.shrink.
       setCycle(false).
       setValues(@baseScale, @minScale, @baseScale, @minScale, 0.5, 0.5).
-      setInterpolator(@shrinkEase).
-      setId(1)
-    @releaseBehavior = new CAAT.ScaleBehavior().
+      setInterpolator(@interps.shrink)
+    @behaviors.release.
       setCycle(false).
       setValues( 0.85, @maxScale, 0.85, @maxScale, 0.5, 0.5).
-      setInterpolator(@shrinkEase).
-      setId(2).
+      setInterpolator(@interps.shrink).
       addListener
-        behaviorExpired: =>
-          @revert()
-    @revertBehavior = new CAAT.ScaleBehavior().
+        behaviorExpired: (behavior, time, actor) =>
+          if actor.id is @actor.id then @revert()
+          if actor.id is @actor.id
+            console.log(actor.id)
+    @behaviors.revert.
       setValues( @maxScale, @baseScale, @maxScale, @baseScale, 0.5, 0.5).
-      setInterpolator(@revertEase).
-      setId(3)
+      setInterpolator(@interps.revert)
+
+  initEvents: =>
+    if @events?
+      for event of @events
+        console.log event, @[@events[event]]
+        @actor[event] = @[@events[event]]
+
+  update: =>
+
   move: (e) =>
     x = @actor.x
     y = @actor.y
-    @actor.x = x + ((e.pageX-@actor.width/2) - x)/30
-    @actor.y = y  + ((e.pageY-@actor.height/2) - y)/30
-  moveTo: (x, y) =>
-    @moving = true
-    tx = x-@actor.width/2
-    ty = y-@actor.height/2
-    @path = new CAAT.LinearPath().setInitialPosition(@actor.x, @actor.y).setFinalPosition(tx,ty)
-    console.log length = Math.sqrt(Math.pow(Math.abs(@actor.x - tx), 2) + Math.pow(Math.abs(@actor.y - ty), 2))
-    b = new CAAT.PathBehavior().setPath(@path).setInterpolator(@moveEase)
-    b.setFrameTime(@director.time, length*2)
-    @actor.addBehavior(b)
+    @vel.x = ((e.pageX - @actor.width/2) - x ) / 30
+    @vel.y = ((e.pageY - @actor.height/2) - y) / 30
+    @actor.x = x + @vel.x
+    @actor.y = y + @vel.y
 
-  updatePath: (x,y) =>
+  rest: =>
+    @vel.x = @vel.x - (@vel.x/30)
+    @vel.y = @vel.y - (@vel.y/30)
+    @actor.x = @actor.x + @vel.x
+    @actor.y = @actor.y + @vel.y
 
-    tx = x-@actor.width/2
-    ty = y-@actor.height/2
-    @path.setFinalPosition(tx, ty)
-  revert: ->
-    @revertBehavior.setFrameTime(@director.time, 800)
-    @actor.addBehavior(@revertBehavior)
+  behave: (behavior, isolate = false) =>
+    if not isolate then @actor.emptyBehaviorList()
+    @actor.addBehavior(@behaviors[behavior])
 
-  shrink: ->
-    @shrinkBehavior.setFrameTime(@director.time, 3000)
-    console.log @baseScale
-#    @actor.removeBehavior(@revertBehavior)
-#    @actor.removeBehavior(@revertBehavior).removeBehavior(@releaseBehavior)
-    @actor.removeBehaviorById(2).removeBehaviorById(3)
-    @actor.addBehavior(@shrinkBehavior)
+  revert: =>
+    @behaviors.revert.setFrameTime(@director.time, 800)
+    @behave('revert')
 
-  release: ->
+  shrink: =>
+    @behaviors.shrink.setFrameTime(@director.time, 3000)
+    @behave('shrink')
+
+  release: =>
     window.ding.play()
     #Behaviors for aura lifecycle
     bScale = new CAAT.ScaleBehavior().
-      setCycle(false).
-      setValues( 0.2*@deviceScale, 1.2*@deviceScale, 0.2*@deviceScale, 1.2*@deviceScale, 0.5, 0.5).
-      setInterpolator(@releaseEase).
-      setFrameTime(@director.time, 800)
-    #      addListener
-    #        behaviorExpired: =>
-    #          @revert()
-    aScale = new CAAT.AlphaBehavior().
-      setCycle(false).
-      setValues(1,0).
-      setInterpolator(@releaseEase).
-      setFrameTime(@director.time, 800)
+    setCycle(false).
+    setValues( 0.2*@deviceScale, 1.2*@deviceScale, 0.2*@deviceScale, 1.2*@deviceScale, 0.5, 0.5).
+    setInterpolator(@interps.release).
+    setFrameTime(@director.time, 800)
+    bAlpha = new CAAT.AlphaBehavior().
+    setCycle(false).
+    setValues(1,0).
+    setInterpolator(@interps.release).
+    setFrameTime(@director.time, 800)
 
-    aura = new CAAT.Actor().setBackgroundImage(@director.getImage('aura')).centerAt(@actor.x+@actor.width/2, @actor.y+@actor.height/2).
-      setFrameTime(@director.time, 800).addBehavior(bScale).addBehavior(aScale)
+    aura = new CAAT.Actor().setBackgroundImage(@director.getImage(@name+'-aura')).centerAt(@actor.x+@actor.width/2, @actor.y+@actor.height/2).
+    setFrameTime(@director.time, 800).addBehavior(bAlpha).addBehavior(bScale)
 
     @director.scenes[0].activeChildren.addChild aura
-    @actor.removeBehaviorById(1)
-    @releaseBehavior.setFrameTime(@director.time, 120).
-      setValues( @actor.scaleX, @maxScale, @actor.scaleY, @maxScale, 0.5, 0.5)
-    @actor.addBehavior(@releaseBehavior)
+    @behaviors.release.setFrameTime(@director.time, 120).
+    setValues( @actor.scaleX, @maxScale, @actor.scaleY, @maxScale, 0.5, 0.5)
+    @behave('release')
+
+
+
+class Player extends Character
+  events:
+    'mouseDown' : 'shrink'
+    'mouseUp'   : 'release'
+    'touchStart': 'shrink'
+    'touchEnd'  : 'release'
+
+class Timer
+  constructor: (@director) ->
+    @startTime = @director.time
+
+  getTime: ->
+    @director.time - @startTime
+
+class Companion extends Character
+  proximity: 100
+  constructor: (@director, @name, @player) ->
+    super(@director, @name)
+    @reactionTimer = new Timer(@director)
+  update: =>
+    @pathToPlayer = new CAAT.LinearPath().setInitialPosition(@actor.x, @actor.y).setFinalPosition(@player.actor.x, @player.actor.y)
+    if @pathToPlayer.updatePath().getLength() < 300
+      @react()
+
+
+
+  react: =>
+    if @reactionTimer.getTime() > 1000
+      @release()
+      @reactionTimer = new Timer(@director)
+
+
+
 
 window.addEventListener('load', -> preload())
 
@@ -126,7 +165,10 @@ CAAT.TOUCH_BEHAVIOR= CAAT.TOUCH_AS_MULTITOUCH;
 preload = ->
   window.images = new CAAT.ImagePreloader().loadImages [
     {id: 'player', url: 'game/assets/images/player.png'}
-    {id: 'aura', url: 'game/assets/images/aura.png'}]
+    {id: 'player-aura', url: 'game/assets/images/aura.png'}
+    {id: 'companion-aura', url: 'game/assets/images/companion-aura.png'}
+    {id: 'companion', url: 'game/assets/images/companion-body.png'}
+  ]
   , ( counter, images ) =>
       if counter is images.length
         start(images)
@@ -144,10 +186,6 @@ start = (images) ->
   director = window.director = new CAAT.Director().initialize window.innerWidth, window.innerHeight, canvas
   director.setImagesCache(images)
 
-  director.onRenderStart = ->
-  #Scene
-    if(director.mousePos)
-      player.move(director.mousePos)
   scene = director.createScene()
   #Container
   container = new CAAT.ActorContainer().
@@ -155,33 +193,38 @@ start = (images) ->
     setGestureEnabled(false)
   container.mouseDown = (e)->
     director.mousePos = e.sourceEvent
-#    movePlayerTo(e.sourceEvent.pageX, e.sourceEvent.pageY)
   container.mouseDrag = (e) ->
     director.mousePos = e.sourceEvent
   container.mouseUp = ->
     director.mousePos = null
-#    player.release()
   container.touchStart = (e)->
-    touch = e.changedTouches[0]
-    movePlayerTo(touch.pageX, touch.pageY)
+    director.mousePos = e.changedTouches[0]
+  container.touchMove = (e) ->
+    director.mousePos = e.changedTouches[0]
   container.touchEnd = ->
-    player.release()
-#  container.touchMove = (e)->
-#    touch = e.changedTouches[0]
-#    updatePlayerPath(e.sourceEvent.pageX, e.sourceEvent.pageY)
+    director.mousePos = null
 
   movePlayerTo = (x,y)->
     player.moveTo(x,y)
   updatePlayerPath = (x,y)->
     player.updatePath(x,y)
   #Player
-  player = window.player = new Player(director);
+  player = window.player = new Player('player', director)
+  window.companion = companion = new Companion('companion', director, player)
   background = new Background(director)
   #Add children
   scene.addChild background.actor
   scene.addChild container
   scene.addChild player.actor
+  container.addChild companion.actor
 
+  director.onRenderStart = ->
+    companion.update()
+
+    if(director.mousePos)
+      player.move(director.mousePos)
+    else
+      player.rest()
   player.actor.setLocation(300, 300)
 
   CAAT.loop 1
