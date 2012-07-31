@@ -1,0 +1,2 @@
+cp -f game/main.js cocoon/4main.js
+rm cocoon/Archive.zip
