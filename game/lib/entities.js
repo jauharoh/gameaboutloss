@@ -1,6 +1,6 @@
 (function() {
   var modules;
-  modules = ['timer', 'player', 'companion', 'musicManager', 'background', 'pathway'];
+  modules = ['timer', 'player', 'companion', 'musicManager', 'background', 'pathway', 'messenger'];
   define(modules, function() {
     var arg, entities, _i, _len;
     entities = [];

@@ -1,11 +1,12 @@
-class Timer
-  constructor: (@director) ->
-    @reset()
+define ->
+  class Timer
+    constructor: (@director) ->
+      @reset()
 
-  getTime: (offset = 0) ->
-    @director.time - @startTime - offset
+    getTime: (offset = 0) ->
+      @director.time - @startTime - offset
 
-  reset: =>
-    @startTime = @director.time
-
-window.Timer = Timer
+    reset: (offset) =>
+      offset = offset or 0
+      @startTime = @director.time + offset
+  return Timer

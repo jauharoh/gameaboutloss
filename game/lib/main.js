@@ -4,17 +4,16 @@
   require.config({
     baseUrl: "game/lib/"
   });
-  require(['entities'], function(entities) {
+  require(['entities', 'kibo'], function(entities, Kibo) {
     return load(entities);
   });
   load = function(entities) {
-    var Background, Companion, MusicManager, Pathway, Player, preload, start;
+    var name, nameCapitalized, preload, start;
     CAAT.TOUCH_BEHAVIOR = CAAT.TOUCH_AS_MULTITOUCH;
-    Player = entities.player;
-    Companion = entities.companion;
-    MusicManager = entities.musicManager;
-    Background = entities.background;
-    Pathway = entities.pathway;
+    for (name in entities) {
+      nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
+      this[nameCapitalized] = entities[name];
+    }
     window.addEventListener('load', function() {
       return preload();
     });
@@ -43,7 +42,7 @@
       });
     };
     return start = function(images) {
-      var background, canvas, companion, container, director, dirs, endPull, music, player, pullCharacter, scene;
+      var background, canvas, companion, container, director, dirs, endPull, k, messenger, music, player, pullCharacter, scene;
       dirs = {
         sound: 'game/assets/sound/',
         music: 'game/assets/music/'
@@ -79,12 +78,12 @@
       background = new Background(director);
       player = window.player = new Player('player', director);
       companion = window.companion = new Companion('companion', director, player);
-      player.other = companion;
+      messenger = new Messenger();
+      messenger.add(player).add(companion);
       scene.addChild(background.actor);
       scene.addChild(container);
       scene.addChild(player.actor);
       container.addChild(companion.actor);
-      companion.setTrack(music.tracks[0], 3, 3);
       director.onRenderStart = function() {
         companion.update();
         player.update();
@@ -92,9 +91,20 @@
       };
       player.setLocation(300, 300);
       CAAT.loop(1);
-      director.mouseDown = function(e) {
+      k = new Kibo();
+      k.down(['space'], function() {
+        return player.shrink();
+      });
+      k.up(['space'], function() {
+        return player.push();
+      });
+      container.mouseDown = function(e) {
+        return player.shrink();
+      };
+      container.mouseUp = function(e) {
         return player.push();
       };
+      container.keyDown = function(e) {};
       container.touchEnd = function(e) {
         return pullCharacter(e.changedTouches[0].pageX, e.changedTouches[0].pageY, player);
       };

@@ -1,16 +1,14 @@
 #---------------#
 require.config
   baseUrl: "game/lib/"
-require ['entities'], (entities) ->
+require ['entities', 'kibo'], (entities, Kibo) ->
   load(entities)
 
 load = (entities) ->
   CAAT.TOUCH_BEHAVIOR= CAAT.TOUCH_AS_MULTITOUCH;
-  Player = entities.player
-  Companion = entities.companion
-  MusicManager = entities.musicManager
-  Background = entities.background
-  Pathway = entities.pathway
+  for name of entities
+    nameCapitalized = name.charAt(0).toUpperCase() + name.slice(1)
+    @[nameCapitalized] = entities[name]
   window.addEventListener('load', -> preload())
 
   preload = ->
@@ -30,17 +28,14 @@ load = (entities) ->
       sound : 'game/assets/sound/'
       music : 'game/assets/music/'
     canvas = document.createElement('canvas')
-    #  canvas = $('#gameCanvas')
     document.body.appendChild(canvas)
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
     director = window.director = new CAAT.Director().initialize window.innerWidth, window.innerHeight, canvas
     director.setImagesCache(images)
-
     director.addAudio('ding', dirs.sound + 'ding.mp3')
     director.addAudio('drum1', dirs.sound + 'drum_1.mp3')
     window.ding = director.getAudioManager().getAudio('ding')
-
     window.music = music = new MusicManager(director)
     music.addTracks([
       { id: 'intro',      bpm: 110, url: dirs.music + 'intro.mp3'}
@@ -55,15 +50,13 @@ load = (entities) ->
     #
     background = new Background(director)
     player = window.player = new Player('player', director)
-#    path = window.path = new Pathway(director, player)
     companion = window.companion= new Companion('companion', director, player)
-    player.other = companion
-
+    messenger = new Messenger()
+    messenger.add(player).add(companion)
     scene.addChild background.actor
     scene.addChild container
     scene.addChild player.actor
     container.addChild companion.actor
-    companion.setTrack(music.tracks[0], 3, 3)
     director.onRenderStart = ->
       companion.update()
       player.update()
@@ -76,8 +69,17 @@ load = (entities) ->
     #  container.mouseDrag = (e) ->
     #    console.log('move')
     #    pullCharacter(e.sourceEvent.pageX, e.sourceEvent.pageY, player)
-    director.mouseDown = (e) ->
+    k = new Kibo()
+    k.down ['space'], ->
+      player.shrink()
+    k.up ['space'], ->
       player.push()
+
+    container.mouseDown = (e) ->
+      player.shrink()
+    container.mouseUp = (e) ->
+      player.push()
+    container.keyDown = (e) ->
     #  container.touchStart = (e)->
     #    pullCharacter(e.changedTouches[0].pageX, e.changedTouches[0].pageY, player)
     #  container.touchMove = (e) ->

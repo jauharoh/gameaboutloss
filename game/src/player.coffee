@@ -1,7 +1,12 @@
-define ['./character'], (Character) ->
+define [
+  './character',
+  './states/revolving']
+, (Character, Revolving) ->
   class Player extends Character
     maxForce: 1
     name: 'player'
+    scale: 0.3
+    radian: Math.PI*0.7
     events:
       'mouseDown' : 'mousePull'
       'mouseDrag' : 'mousePull'
@@ -10,19 +15,22 @@ define ['./character'], (Character) ->
       'touchMove' : 'touchPull'
       'touchEnd'   : 'endPull'
 
-    constructor: (name, director, other) ->
-      super(name, director, other)
+    constructor: (name, director) ->
+      super(name, director)
+    initialize: =>
+      console.log 'init'
+      @enterState 'revolving'
     update: =>
       super()
     #    if @getDistanceToVector(@localizedVector)
+    isGood: =>
+      @emitAura()
     release: =>
       super()
+      @messenger.broadcast(@, {event: 'hearNote'})
       time = @director.time
       @lastShout = time
       range = 200
-      if( @other.lastShout+range  > time )
-        @other.happiness += 1
-        @other.emitAura()
     touchPull: (e) =>
       x = e.changedTouches[0].pageX + @actor.x
       y = e.changedTouches[0].pageY + @actor.y

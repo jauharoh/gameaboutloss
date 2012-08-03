@@ -1,50 +1,44 @@
-define ['./character'], (Character) ->
+define [
+  './character',
+  './timer',
+  './data/patterns']
+, (Character, Timer, patternData) ->
   class Companion extends Character
     name: 'companion'
+    scale: 0.7
+    radian: Math.PI*1.8
+    singing: false
+    satisfaction: 0
+    currentPattern: 0
+    goal: 15
+    goalIncrement: 20
     constructor: (name, director, other) ->
+      @pattern = patternData[0]
       super(name, director, other)
-      @beat = 60000 / 44
-      @reactionTimer = new Timer(@director)
-      @chargeTimer = new Timer(@director)
-      @beatsTimer = new Timer(@director)
-      @offset = 0
-      @happiness = 0
-      @singing = false
 
-    setTrack:(track, signature, offset) =>
-      @beatsTimer.reset()
-      @beat = (60000/(track.bpm/signature))
-      @offset = offset
-
+    initialize: =>
+      @enterState 'revolving'
+      setTimeout =>
+        @enterState 'singing'
+      , 2000
+    sing: =>
+      @enterState 'singing'
     update: =>
       super()
-      if @happiness > 3
-        music.next(4)
-        @happiness = 0
-      if @singing
-        if @beatsTimer.getTime(@offset) > @beat
-          @charge()
-          @beatsTimer.reset()
-      if @charging?
-        if @chargeTimer.getTime() > 1000
-          @release()
-          if @other.lastShout > @director.time - 100
-            @emitAura()
-            @happiness += 1
-          @lastShout = @director.time
-          @charging = null
-      @pathToPlayer = new CAAT.LinearPath().setInitialPosition(@actor.x, @actor.y).setFinalPosition(@other.actor.x, @other.actor.y)
-      if @pathToPlayer.updatePath().getLength() < 300
-        @react()
 
-    charge: =>
-      @charging = true
-      @chargeTimer.reset()
-      @shrink()
+    newPattern: =>
+      console.log 'new pattern'
+      @currentPattern += 1
+      @pattern = patternData[@currentPattern]
+      @goal += @goalIncrement
+
+    hearNote: =>
+      @currentState.hearNote()?
 
     react: =>
       if @reactionTimer.getTime() > 1000
         @release()
         @reactionTimer = new Timer(@director)
+
   return Companion
 

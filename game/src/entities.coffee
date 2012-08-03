@@ -4,7 +4,8 @@ modules = [
   'companion',
   'musicManager',
   'background',
-  'pathway'
+  'pathway',
+  'messenger',
 ]
 
 define modules, ->

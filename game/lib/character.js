@@ -1,17 +1,10 @@
 (function() {
-  var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; }, __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
-    for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
-    function ctor() { this.constructor = child; }
-    ctor.prototype = parent.prototype;
-    child.prototype = new ctor;
-    child.__super__ = parent.prototype;
-    return child;
-  };
-  define(['./timer'], function() {
-    var Character, IdleState, NavigateState, RevolveState, State, Waypoint;
+  var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+  define(['./timer', './states'], function(Timer, State) {
+    var Character, Waypoint;
     Character = (function() {
       Character.prototype.deviceScale = window.innerHeight / 768;
-      Character.prototype.events = [];
+      Character.prototype.events = {};
       Character.prototype.mass = 100;
       Character.prototype.vel = 0;
       Character.prototype.accelerationTimer = null;
@@ -23,31 +16,45 @@
       Character.prototype.normalizedVector = [0, 0];
       Character.prototype.localizedVector = [0, 0];
       Character.prototype.radian = 0;
-      Character.prototype.radius = 300;
+      Character.prototype.radius = 140;
+      Character.prototype.scale = 0.5;
+      Character.prototype.speed = 0;
+      Character.prototype.maxSpeed = 0.02;
       Character.prototype.behaviors = {
         shrink: new CAAT.ScaleBehavior(),
         release: new CAAT.ScaleBehavior(),
         revert: new CAAT.ScaleBehavior(),
-        alpha: new CAAT.AlphaBehavior()
+        alpha: new CAAT.AlphaBehavior(),
+        rotate: new CAAT.RotateBehavior()
       };
       Character.prototype.interps = {
         shrink: new CAAT.Interpolator().createExponentialOutInterpolator(4, false),
         move: new CAAT.Interpolator().createExponentialOutInterpolator(2, false),
         shrink: new CAAT.Interpolator().createExponentialOutInterpolator(4, false),
         release: new CAAT.Interpolator().createExponentialOutInterpolator(2, false),
-        revert: new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5)
+        revert: new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5),
+        inOut: new CAAT.Interpolator().createExponentialInOutInterpolator(1, false)
       };
       function Character(name, director, other) {
         this.name = name;
         this.director = director;
         this.other = other;
         this.setCurrentState = __bind(this.setCurrentState, this);
+        this.enterState = __bind(this.enterState, this);
         this.release = __bind(this.release, this);
         this.emitAura = __bind(this.emitAura, this);
         this.shrink = __bind(this.shrink, this);
+        this.rotate = __bind(this.rotate, this);
+        this.reactNegative = __bind(this.reactNegative, this);
+        this.setProperty = __bind(this.setProperty, this);
+        this.sendMessage = __bind(this.sendMessage, this);
+        this.receiveMessage = __bind(this.receiveMessage, this);
         this.revert = __bind(this.revert, this);
         this.behave = __bind(this.behave, this);
         this.rest = __bind(this.rest, this);
+        this.push = __bind(this.push, this);
+        this.updateRadialPosition = __bind(this.updateRadialPosition, this);
+        this.updateSpeed = __bind(this.updateSpeed, this);
         this.updatePosition = __bind(this.updatePosition, this);
         this.move = __bind(this.move, this);
         this.setLocation = __bind(this.setLocation, this);
@@ -67,13 +74,13 @@
         this.startPull = __bind(this.startPull, this);
         this.initEvents = __bind(this.initEvents, this);
         this.initialize = __bind(this.initialize, this);
+        this.setScale = __bind(this.setScale, this);
         this.vel = {
           x: 0,
           y: 0
         };
-        this.maxScale = 1.2 * this.deviceScale;
-        this.minScale = 0.35 * this.deviceScale;
-        this.baseScale = 1 * this.deviceScale;
+        this.radius = screen.height / 4 - ((screen.height / 2) * 0.2);
+        this.setScale();
         this.actor = new CAAT.Actor().setBackgroundImage(this.director.getImage(this.name));
         this.actor.setScale(this.baseScale, this.baseScale);
         this.actor.name = this.name;
@@ -82,10 +89,12 @@
         this.initialize();
         this.initEvents();
       }
-      Character.prototype.initialize = function() {
-        this.setCurrentState(RevolveState);
-        return this.waypoints = [];
+      Character.prototype.setScale = function() {
+        this.maxScale = (this.scale * 1.1) * this.deviceScale;
+        this.minScale = (this.scale * 0.9) * this.deviceScale;
+        return this.baseScale = this.scale * this.deviceScale;
       };
+      Character.prototype.initialize = function() {};
       Character.prototype.initEvents = function() {
         var event, _results;
         if (this.events != null) {
@@ -151,8 +160,12 @@
       Character.prototype.test = function(x, y) {
         return this.testPoints = [x, y];
       };
+      Character.prototype.currentState = {
+        update: function() {}
+      };
       Character.prototype.update = function() {
-        return this.currentState.update();
+        this.currentState.update();
+        return this.updateSpeed();
       };
       Character.prototype.paint = function() {};
       Character.prototype.getActorCenter = function() {
@@ -185,6 +198,18 @@
         this.actor.x += this.vel.x;
         return this.actor.y += this.vel.y;
       };
+      Character.prototype.updateSpeed = function() {
+        return this.speed -= this.speed / 40;
+      };
+      Character.prototype.updateRadialPosition = function() {
+        this.radian += this.speed;
+        this.actor.x = window.innerWidth / 3 + this.radius * Math.cos(this.radian) - this.actor.width / 2;
+        return this.actor.y = window.innerHeight / 3 + this.radius * Math.sin(this.radian) - this.actor.height / 2;
+      };
+      Character.prototype.push = function() {
+        this.speed = this.maxSpeed;
+        return this.release();
+      };
       Character.prototype.rest = function() {
         this.vel.x = this.vel.x - (this.vel.x / 30);
         this.vel.y = this.vel.y - (this.vel.y / 30);
@@ -205,14 +230,57 @@
         behavior = new CAAT.ScaleBehavior().setValues(this.maxScale, this.baseScale, this.maxScale, this.baseScale, 0.5, 0.5).setInterpolator(this.interps.revert).setFrameTime(this.director.time, 800);
         return this.actor.addBehavior(behavior);
       };
+      Character.prototype.receiveMessage = function(message) {
+        var name, _results;
+        _results = [];
+        for (name in message) {
+          if (name === 'event') {
+            _results.push(this[message[name]]());
+          }
+        }
+        return _results;
+      };
+      Character.prototype.sendMessage = function(message) {
+        return this.messenger.broadcast(this, message);
+      };
+      Character.prototype.setProperty = function(properties) {
+        var property, _results;
+        _results = [];
+        for (property in properties) {
+          _results.push(this[property] = properties[property]);
+        }
+        return _results;
+      };
+      Character.prototype.reactNegative = function() {
+        this.shakeCount = 3;
+        return this.rotate(0, Math.PI * 0.1);
+      };
+      Character.prototype.rotate = function(start, end) {
+        var behavior;
+        behavior = new CAAT.RotateBehavior().setValues(start, end).setFrameTime(this.director.time, 150).setInterpolator(this.interps.inOut);
+        if (this.shakeCount > 0) {
+          behavior.addListener({
+            behaviorExpired: __bind(function(behavior, time, actor) {
+              start = end;
+              if (this.shakeCount === 1) {
+                end = 0;
+              } else {
+                end = -start;
+              }
+              this.rotate(start, end);
+              return this.shakeCount -= 1;
+            }, this)
+          });
+        }
+        return this.behave(behavior);
+      };
       Character.prototype.shrink = function() {
         var behavior;
-        behavior = new CAAT.ScaleBehavior().setCycle(false).setValues(this.baseScale, this.minScale, this.baseScale, this.minScale, 0.5, 0.5).setInterpolator(this.interps.shrink).setFrameTime(this.director.time, 3000);
+        behavior = new CAAT.ScaleBehavior().setCycle(false).setValues(this.actor.scaleX, this.minScale, this.actor.scaleY, this.minScale, 0.5, 0.5).setInterpolator(this.interps.shrink).setFrameTime(this.director.time, 3000);
         return this.behave(behavior);
       };
       Character.prototype.emitAura = function() {
         var aura, bAlpha, bScale;
-        director.getAudioManager().play('drum1');
         bScale = new CAAT.ScaleBehavior().setCycle(false).setValues(0.2 * this.deviceScale, 1.2 * this.deviceScale, 0.2 * this.deviceScale, 1.2 * this.deviceScale, 0.5, 0.5).setInterpolator(this.interps.release).setFrameTime(this.director.time, 800);
         bAlpha = new CAAT.AlphaBehavior().setCycle(false).setValues(1, 0).setInterpolator(this.interps.release).setFrameTime(this.director.time, 800);
         aura = new CAAT.Actor().setBackgroundImage(this.director.getImage(this.name + '-aura')).centerAt(this.actor.x + this.actor.width / 2, this.actor.y + this.actor.height / 2).setFrameTime(this.director.time, 800).addBehavior(bAlpha).addBehavior(bScale);
@@ -220,7 +288,6 @@
       };
       Character.prototype.release = function() {
         var behavior;
-        this.emitAura();
         this.director.getAudioManager().play('ding');
         behavior = new CAAT.ScaleBehavior().setCycle(false).setValues(0.85, this.maxScale, 0.85, this.maxScale, 0.5, 0.5).setInterpolator(this.interps.shrink).setFrameTime(this.director.time, 120).setValues(this.actor.scaleX, this.maxScale, this.actor.scaleY, this.maxScale, 0.5, 0.5).addListener({
           behaviorExpired: __bind(function(behavior, time, actor) {
@@ -229,77 +296,19 @@
         });
         return this.behave(behavior);
       };
-      Character.prototype.setCurrentState = function(state) {
-        return this.currentState = new state(this);
+      Character.prototype.enterState = function(name, option) {
+        if (option == null) {
+          option = null;
+        }
+        return this.currentState = new State[name](this, option);
+      };
+      Character.prototype.setCurrentState = function(state, option) {
+        if (option == null) {
+          option = null;
+        }
+        return this.currentState = new state(this, option);
       };
       return Character;
-    })();
-    State = (function() {
-      function State(owner) {
-        this.owner = owner;
-        this.enter = __bind(this.enter, this);
-        this.update = __bind(this.update, this);
-      }
-      State.prototype.update = function() {
-        return this.owner.updatePosition();
-      };
-      State.prototype.enter = function(state, setting) {
-        if (setting == null) {
-          setting = null;
-        }
-        return this.owner.setCurrentState(state);
-      };
-      return State;
-    })();
-    RevolveState = (function() {
-      __extends(RevolveState, State);
-      function RevolveState(owner) {
-        this.owner = owner;
-        this.update = __bind(this.update, this);
-      }
-      RevolveState.prototype.update = function() {
-        this.owner.radian += .02;
-        this.owner.actor.x = 200 + this.owner.radius * Math.cos(this.owner.radian);
-        return this.owner.actor.y = 0 + this.owner.radius * Math.sin(this.owner.radian);
-      };
-      return RevolveState;
-    })();
-    IdleState = (function() {
-      __extends(IdleState, State);
-      function IdleState(owner) {
-        this.owner = owner;
-        this.update = __bind(this.update, this);
-      }
-      IdleState.prototype.update = function() {
-        if (this.owner.force !== 0) {
-          this.owner.addForce(0);
-        }
-        IdleState.__super__.update.call(this);
-        if (this.owner.waypoints.length > 0) {
-          this.owner.setDestination();
-          return this.enter(NavigateState);
-        }
-      };
-      return IdleState;
-    })();
-    NavigateState = (function() {
-      __extends(NavigateState, State);
-      function NavigateState(owner) {
-        this.owner = owner;
-        this.update = __bind(this.update, this);
-      }
-      NavigateState.prototype.update = function() {
-        NavigateState.__super__.update.call(this);
-        this.owner.setVector(this.owner.target[0], this.owner.target[1]);
-        if (this.owner.isNearWaypoint()) {
-          setTimeout(__bind(function() {
-            return this.owner.emitAura();
-          }, this), 100);
-          this.enter(IdleState);
-        }
-        return this.owner.addForce(this.owner.maxForce);
-      };
-      return NavigateState;
     })();
     Waypoint = (function() {
       function Waypoint(director, x, y) {

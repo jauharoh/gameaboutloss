@@ -7,12 +7,14 @@
     child.__super__ = parent.prototype;
     return child;
   };
-  define(['./character'], function(Character) {
+  define(['./character', './states/revolving'], function(Character, Revolving) {
     var Player;
     Player = (function() {
       __extends(Player, Character);
       Player.prototype.maxForce = 1;
       Player.prototype.name = 'player';
+      Player.prototype.scale = 0.3;
+      Player.prototype.radian = Math.PI * 0.7;
       Player.prototype.events = {
         'mouseDown': 'mousePull',
         'mouseDrag': 'mousePull',
@@ -21,25 +23,33 @@
         'touchMove': 'touchPull',
         'touchEnd': 'endPull'
       };
-      function Player(name, director, other) {
+      function Player(name, director) {
         this.mousePull = __bind(this.mousePull, this);
         this.touchPull = __bind(this.touchPull, this);
         this.release = __bind(this.release, this);
-        this.update = __bind(this.update, this);        Player.__super__.constructor.call(this, name, director, other);
+        this.isGood = __bind(this.isGood, this);
+        this.update = __bind(this.update, this);
+        this.initialize = __bind(this.initialize, this);        Player.__super__.constructor.call(this, name, director);
       }
+      Player.prototype.initialize = function() {
+        console.log('init');
+        return this.enterState('revolving');
+      };
       Player.prototype.update = function() {
         return Player.__super__.update.call(this);
+      };
+      Player.prototype.isGood = function() {
+        return this.emitAura();
       };
       Player.prototype.release = function() {
         var range, time;
         Player.__super__.release.call(this);
+        this.messenger.broadcast(this, {
+          event: 'hearNote'
+        });
         time = this.director.time;
         this.lastShout = time;
-        range = 200;
-        if (this.other.lastShout + range > time) {
-          this.other.happiness += 1;
-          return this.other.emitAura();
-        }
+        return range = 200;
       };
       Player.prototype.touchPull = function(e) {
         var x, y;

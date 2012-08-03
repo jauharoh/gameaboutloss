@@ -1,7 +1,7 @@
-define ['./timer'], ->
+define ['./timer', './states'], (Timer, State) ->
   class Character
     deviceScale: window.innerHeight/768
-    events: []
+    events: {}
     mass: 100
     vel: 0
     accelerationTimer: null
@@ -13,12 +13,16 @@ define ['./timer'], ->
     normalizedVector: [0,0]
     localizedVector: [0,0]
     radian: 0
-    radius: 300
+    radius: 140
+    scale: 0.5
+    speed: 0
+    maxSpeed: 0.02
     behaviors:
       shrink : new CAAT.ScaleBehavior()
       release: new CAAT.ScaleBehavior()
       revert : new CAAT.ScaleBehavior()
       alpha  : new CAAT.AlphaBehavior()
+      rotate: new CAAT.RotateBehavior()
 
     interps:
       shrink  : new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
@@ -26,12 +30,12 @@ define ['./timer'], ->
       shrink  : new CAAT.Interpolator().createExponentialOutInterpolator(4,false)
       release : new CAAT.Interpolator().createExponentialOutInterpolator(2, false)
       revert  : new CAAT.Interpolator().createElasticOutInterpolator(1, 0.5)
+      inOut   : new CAAT.Interpolator().createExponentialInOutInterpolator(1, false)
 
     constructor: (@name, @director, @other) ->
       @vel = {x:0, y: 0}
-      @maxScale = 1.2*@deviceScale
-      @minScale = 0.35*@deviceScale
-      @baseScale = 1*@deviceScale
+      @radius = screen.height/4 - ((screen.height/2)*0.2)
+      @setScale()
       @actor = new CAAT.Actor().
       setBackgroundImage(@director.getImage(@name))
       @actor.setScale(@baseScale, @baseScale)
@@ -42,9 +46,12 @@ define ['./timer'], ->
       @initialize()
       @initEvents()
 
+    setScale: =>
+      @maxScale = (@scale*1.1)*@deviceScale
+      @minScale = (@scale*0.9)*@deviceScale
+      @baseScale = @scale*@deviceScale
+
     initialize: =>
-      @setCurrentState RevolveState
-      @waypoints = []
 
     initEvents: =>
       if @events?
@@ -102,8 +109,13 @@ define ['./timer'], ->
     test: (x,y) =>
       @testPoints = [x,y]
 
+    currentState:
+      update: ->
+        return
+
     update: =>
       @currentState.update()
+      @updateSpeed()
     paint: =>
 
     getActorCenter:  =>
@@ -133,6 +145,15 @@ define ['./timer'], ->
       @vel.y *= 1 - @friction
       @actor.x += @vel.x
       @actor.y += @vel.y
+    updateSpeed: =>
+      @speed -= @speed/40
+    updateRadialPosition: =>
+      @radian += @speed
+      @actor.x = window.innerWidth/3 + @radius*Math.cos(@radian)   - @actor.width/2
+      @actor.y = window.innerHeight/3 + @radius*Math.sin(@radian)  - @actor.height/2
+    push: =>
+      @speed = @maxSpeed
+      @release()
 
     rest: =>
       @vel.x = @vel.x - (@vel.x/30)
@@ -151,16 +172,48 @@ define ['./timer'], ->
       setFrameTime(@director.time, 800)
       @actor.addBehavior(behavior)
 
+    receiveMessage: (message) =>
+      for name of message when name is 'event'
+        @[message[name]]()
+
+
+    sendMessage: (message) =>
+      @messenger.broadcast(@, message)
+
+    setProperty: (properties) =>
+      for property of properties
+        @[property] = properties[property]
+
+    reactNegative: =>
+      @shakeCount = 3
+      @rotate(0, Math.PI * 0.1)
+    rotate: (start, end) =>
+      behavior = new CAAT.RotateBehavior().
+      setValues(start, end).
+      setFrameTime(@director.time, 150).
+      setInterpolator(@interps.inOut)
+      if @shakeCount > 0
+        behavior.
+        addListener
+          behaviorExpired: (behavior, time, actor) =>
+            start = end
+            if @shakeCount == 1
+              end = 0
+            else
+              end = -start
+            @rotate(start, end)
+            @shakeCount -= 1
+      @behave(behavior)
+
     shrink: =>
       behavior = new CAAT.ScaleBehavior().
       setCycle(false).
-      setValues(@baseScale, @minScale, @baseScale, @minScale, 0.5, 0.5).
+      setValues(@actor.scaleX, @minScale, @actor.scaleY, @minScale, 0.5, 0.5).
       setInterpolator(@interps.shrink).
       setFrameTime(@director.time, 3000)
       @behave(behavior)
 
     emitAura: =>
-      director.getAudioManager().play('drum1')
       bScale = new CAAT.ScaleBehavior().
       setCycle(false).
       setValues( 0.2*@deviceScale, 1.2*@deviceScale, 0.2*@deviceScale, 1.2*@deviceScale, 0.5, 0.5).
@@ -176,7 +229,6 @@ define ['./timer'], ->
       @director.scenes[0].activeChildren.addChild aura
 
     release: =>
-      @emitAura()
       @director.getAudioManager().play('ding')
       #    Behaviors for aura lifecycle
       behavior = new CAAT.ScaleBehavior().
@@ -191,48 +243,12 @@ define ['./timer'], ->
       #          if actor.id is @actor.id then @revert()
       @behave(behavior)
 
-    setCurrentState: (state) =>
-      @currentState = new state(@)
+    enterState: (name, option = null) =>
+      @currentState = new State[name](@, option)
 
-  class State
-    constructor: (@owner) ->
+    setCurrentState: (state, option = null) =>
+      @currentState = new state(@, option)
 
-    update: =>
-      @owner.updatePosition()
-    enter: (state, setting = null) =>
-      @owner.setCurrentState state
-
-  class RevolveState extends State
-    constructor: (@owner) ->
-
-    update: =>
-      @owner.radian += .02
-      @owner.actor.x = 200 + @owner.radius*Math.cos(@owner.radian)
-      @owner.actor.y = 0 + @owner.radius*Math.sin(@owner.radian)
-
-
-  class IdleState extends State
-    constructor: (@owner) ->
-    update: =>
-      if @owner.force isnt 0
-        @owner.addForce(0)
-      super()
-      if @owner.waypoints.length > 0
-        @owner.setDestination()
-        @enter(NavigateState)
-
-  class NavigateState extends State
-    constructor: (@owner) ->
-    update: =>
-      super()
-      @owner.setVector(@owner.target[0], @owner.target[1])
-      if @owner.isNearWaypoint()
-        setTimeout =>
-          #          @owner.release()
-            @owner.emitAura()
-          , 100
-        @enter IdleState
-      @owner.addForce @owner.maxForce
   class Waypoint
     constructor: (director,x,y) ->
       @x = x
